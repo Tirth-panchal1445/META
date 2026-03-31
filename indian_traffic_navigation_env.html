@@ -1,0 +1,266 @@
+
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Rajdhani:wght@400;500;600;700&display=swap');
+  *{box-sizing:border-box;margin:0;padding:0}
+  :root{
+    --road:#1a1a2e;--lane:#16213e;--marking:#e2b96f;
+    --car:#f5a623;--goal:#4ecdc4;--vehicle:#e74c3c;
+    --pothole:#8e44ad;--pedestrian:#2ecc71;--empty:#0f3460;
+    --panel:#0d1b2a;--text:#e8e8e8;--sub:#8899aa;
+    --border:#1e3a5f;--accent:#f5a623;
+  }
+  #app{font-family:'Rajdhani',sans-serif;background:var(--road);color:var(--text);padding:16px;min-height:400px}
+  h1{font-family:'Space Mono',monospace;font-size:14px;color:var(--accent);letter-spacing:2px;text-transform:uppercase;margin-bottom:4px}
+  .subtitle{font-size:12px;color:var(--sub);margin-bottom:16px}
+  .layout{display:grid;grid-template-columns:1fr 220px;gap:12px}
+  .grid-wrap{background:var(--lane);border-radius:8px;border:1px solid var(--border);padding:10px}
+  #game-grid{display:grid;gap:2px;width:100%;aspect-ratio:1}
+  .cell{border-radius:3px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;transition:background 0.15s}
+  .cell-empty{background:#0d1b2a}
+  .cell-agent{background:var(--car);color:#000}
+  .cell-vehicle{background:var(--vehicle);color:#fff}
+  .cell-pothole{background:var(--pothole);color:#fff}
+  .cell-pedestrian{background:var(--pedestrian);color:#000}
+  .cell-goal{background:var(--goal);color:#000;box-shadow:0 0 8px var(--goal)}
+  .panel{display:flex;flex-direction:column;gap:10px}
+  .card{background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:12px}
+  .card-title{font-size:11px;color:var(--sub);letter-spacing:1px;text-transform:uppercase;margin-bottom:8px}
+  .stat{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;font-size:13px}
+  .stat-val{font-family:'Space Mono',monospace;font-size:14px;color:var(--accent)}
+  .stat-val.good{color:var(--goal)}
+  .stat-val.bad{color:var(--vehicle)}
+  .legend{display:flex;flex-direction:column;gap:5px}
+  .leg-row{display:flex;align-items:center;gap:7px;font-size:12px;color:var(--sub)}
+  .leg-dot{width:12px;height:12px;border-radius:2px;flex-shrink:0}
+  .controls{display:flex;flex-direction:column;gap:6px}
+  button{background:transparent;border:1px solid var(--border);color:var(--text);border-radius:6px;padding:7px 10px;font-family:'Rajdhani',sans-serif;font-size:13px;font-weight:600;cursor:pointer;transition:all 0.15s;letter-spacing:.5px}
+  button:hover{border-color:var(--accent);color:var(--accent)}
+  button.primary{border-color:var(--accent);color:var(--accent)}
+  button.primary:hover{background:var(--accent);color:#000}
+  button:disabled{opacity:0.4;cursor:not-allowed}
+  .log{background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:10px;height:100px;overflow-y:auto;font-family:'Space Mono',monospace;font-size:10px;color:var(--sub)}
+  .log-line{margin-bottom:3px;line-height:1.4}
+  .log-line.good{color:var(--goal)}
+  .log-line.bad{color:var(--vehicle)}
+  .log-line.warn{color:var(--marking)}
+  .outcome-banner{display:none;text-align:center;padding:10px;border-radius:6px;font-size:14px;font-weight:700;margin-bottom:8px;letter-spacing:1px}
+  .outcome-banner.win{background:#1a3a3a;border:1px solid var(--goal);color:var(--goal)}
+  .outcome-banner.lose{background:#3a1a1a;border:1px solid var(--vehicle);color:var(--vehicle)}
+  .outcome-banner.timeout{background:#2a2a1a;border:1px solid var(--marking);color:var(--marking)}
+  .speed-row{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--sub)}
+  .speed-row input{flex:1;accent-color:var(--accent)}
+  #speed-val{font-family:'Space Mono',monospace;color:var(--accent);font-size:11px;min-width:28px}
+  @media(max-width:540px){.layout{grid-template-columns:1fr}}
+</style>
+
+<div id="app">
+  <h1>Indian Traffic Nav Env</h1>
+  <p class="subtitle">Meta PyTorch OpenEnv Hackathon &mdash; Heuristic Agent Demo</p>
+  <div id="outcome" class="outcome-banner"></div>
+  <div class="layout">
+    <div class="grid-wrap">
+      <div id="game-grid"></div>
+    </div>
+    <div class="panel">
+      <div class="card">
+        <div class="card-title">Episode Stats</div>
+        <div class="stat"><span>Step</span><span class="stat-val" id="s-step">0</span></div>
+        <div class="stat"><span>Total Reward</span><span class="stat-val" id="s-reward">0.0</span></div>
+        <div class="stat"><span>Position</span><span class="stat-val" id="s-pos">(9,5)</span></div>
+        <div class="stat"><span>Last Action</span><span class="stat-val" id="s-action">—</span></div>
+        <div class="stat"><span>Status</span><span class="stat-val" id="s-status">Ready</span></div>
+      </div>
+      <div class="card">
+        <div class="card-title">Legend</div>
+        <div class="legend">
+          <div class="leg-row"><div class="leg-dot" style="background:var(--car)"></div>C — Your car</div>
+          <div class="leg-row"><div class="leg-dot" style="background:var(--goal)"></div>G — Goal</div>
+          <div class="leg-row"><div class="leg-dot" style="background:var(--vehicle)"></div>V — Vehicle</div>
+          <div class="leg-row"><div class="leg-dot" style="background:var(--pothole)"></div>O — Pothole</div>
+          <div class="leg-row"><div class="leg-dot" style="background:var(--pedestrian)"></div>P — Pedestrian</div>
+        </div>
+      </div>
+      <div class="card controls">
+        <div class="card-title">Controls</div>
+        <button class="primary" id="btn-reset">Reset / New Game</button>
+        <button id="btn-step" disabled>Step Once</button>
+        <button id="btn-run" disabled>Run Auto</button>
+        <button id="btn-stop" disabled>Stop</button>
+        <div class="speed-row">
+          <span>Speed</span>
+          <input type="range" id="speed" min="50" max="800" value="250" step="50">
+          <span id="speed-val">250ms</span>
+        </div>
+      </div>
+      <div class="log" id="log"><div class="log-line">Press Reset to begin...</div></div>
+    </div>
+  </div>
+</div>
+
+<script>
+const GRID=10,MAX_STEPS=100;
+const EMPTY=0,AGENT=1,VEHICLE=2,POTHOLE=3,PEDESTRIAN=4,GOAL=5;
+let agentPos,goalPos,obstacles,step,totalReward,done,truncated,autoTimer=null;
+
+const el=id=>document.getElementById(id);
+const gridEl=el('game-grid');
+
+function rng(a,b){return Math.floor(Math.random()*(b-a+1))+a;}
+
+function posKey(r,c){return r+','+c;}
+
+function reset(){
+  clearAuto();
+  step=0;totalReward=0;done=false;truncated=false;
+  goalPos=[0,Math.floor(GRID/2)];
+  agentPos=[GRID-1,Math.floor(GRID/2)];
+  const forbidden=new Set([posKey(...goalPos),posKey(...agentPos)]);
+  obstacles=[];
+  const nv=rng(8,15),np=rng(3,7),nped=rng(4,8);
+  for(let i=0;i<nv;i++){let r=rng(1,GRID-2),c=rng(0,GRID-1);if(!forbidden.has(posKey(r,c)))obstacles.push([r,c,VEHICLE]);}
+  for(let i=0;i<np;i++){let r=rng(1,GRID-2),c=rng(0,GRID-1);if(!forbidden.has(posKey(r,c)))obstacles.push([r,c,POTHOLE]);}
+  for(let i=0;i<nped;i++){let r=rng(1,GRID-2),c=rng(0,GRID-1);if(!forbidden.has(posKey(r,c)))obstacles.push([r,c,PEDESTRIAN]);}
+  el('outcome').style.display='none';
+  el('btn-step').disabled=false;
+  el('btn-run').disabled=false;
+  el('btn-stop').disabled=true;
+  clearLog();
+  addLog('New episode. '+obstacles.length+' obstacles. Go!','warn');
+  updateStats('Ready');
+  render();
+}
+
+function dangerSet(){
+  const s=new Set();
+  obstacles.forEach(([r,c])=>s.add(posKey(r,c)));
+  return s;
+}
+
+function chooseAction(){
+  const [row,col]=agentPos;
+  const danger=dangerSet();
+  const goal=goalPos;
+  const safe=pos=>(pos[0]===goal[0]&&pos[1]===goal[1])||!danger.has(posKey(...pos));
+  const upPos=[Math.max(0,row-1),col];
+  const leftPos=[row,Math.max(0,col-1)];
+  const rightPos=[row,Math.min(GRID-1,col+1)];
+  if(upPos[0]===goal[0]&&upPos[1]===goal[1])return 0;
+  if(rightPos[0]===goal[0]&&rightPos[1]===goal[1])return 2;
+  if(leftPos[0]===goal[0]&&leftPos[1]===goal[1])return 1;
+  const cands=[];
+  if(safe(upPos))cands.push([0,upPos]);
+  if(col<goal[1]&&safe(rightPos))cands.push([2,rightPos]);
+  if(col>goal[1]&&safe(leftPos))cands.push([1,leftPos]);
+  if(!cands.length){if(safe(rightPos))cands.push([2,rightPos]);if(safe(leftPos))cands.push([1,leftPos]);}
+  return cands.length?cands[0][0]:3;
+}
+
+const ACTION_NAMES=['Up','Left','Right','Stay'];
+
+function stepEnv(){
+  if(done||truncated)return;
+  step++;
+  const prevRow=agentPos[0];
+  let [row,col]=agentPos;
+  const action=chooseAction();
+  if(action===0)row=Math.max(0,row-1);
+  else if(action===1)col=Math.max(0,col-1);
+  else if(action===2)col=Math.min(GRID-1,col+1);
+  agentPos=[row,col];
+  let reward=-0.5;
+  let collisionType=null;
+  for(const [r,c,t] of obstacles){
+    if(row===r&&col===c){
+      collisionType=t;
+      if(t===VEHICLE){reward-=50;done=true;}
+      else if(t===POTHOLE){reward-=20;}
+      else if(t===PEDESTRIAN){reward-=100;done=true;}
+      break;
+    }
+  }
+  if(agentPos[0]===goalPos[0]&&agentPos[1]===goalPos[1]){reward+=100;done=true;}
+  if(action===0&&row<prevRow)reward+=1;
+  totalReward+=reward;
+  if(step>=MAX_STEPS)truncated=true;
+  const rewardStr=(reward>=0?'+':'')+reward.toFixed(1);
+  let cls='';
+  if(done&&agentPos[0]===goalPos[0]&&agentPos[1]===goalPos[1])cls='good';
+  else if(collisionType===VEHICLE||collisionType===PEDESTRIAN)cls='bad';
+  else if(collisionType===POTHOLE)cls='warn';
+  addLog(`#${step} ${ACTION_NAMES[action]} (${row},${col}) r=${rewardStr} total=${totalReward>=0?'+':''}${totalReward.toFixed(1)}`,cls);
+  let status='Running';
+  if(done||truncated){
+    clearAuto();
+    el('btn-step').disabled=true;
+    el('btn-run').disabled=true;
+    el('btn-stop').disabled=true;
+    const banner=el('outcome');
+    if(agentPos[0]===goalPos[0]&&agentPos[1]===goalPos[1]){
+      banner.className='outcome-banner win';banner.textContent='GOAL REACHED! +100 Reward';status='Won';
+    } else if(done){
+      banner.className='outcome-banner lose';
+      banner.textContent=collisionType===PEDESTRIAN?'COLLISION — Pedestrian hit!':'COLLISION — Vehicle crash!';
+      status='Crashed';
+    } else {
+      banner.className='outcome-banner timeout';banner.textContent='TIME OUT — Max steps reached';status='Timeout';
+    }
+    banner.style.display='block';
+    addLog('Episode ended. Total: '+(totalReward>=0?'+':'')+totalReward.toFixed(1),done&&agentPos[0]===goalPos[0]?'good':'bad');
+  }
+  updateStats(status);
+  render();
+}
+
+function updateStats(status){
+  el('s-step').textContent=step;
+  const rv=totalReward.toFixed(1);
+  const re=el('s-reward');
+  re.textContent=(totalReward>=0?'+':'')+rv;
+  re.className='stat-val'+(totalReward>0?' good':totalReward<0?' bad':'');
+  el('s-pos').textContent='('+agentPos[0]+','+agentPos[1]+')';
+  el('s-action').textContent=step>0?ACTION_NAMES[chooseAction()]:'—';
+  const se=el('s-status');
+  se.textContent=status;
+  se.className='stat-val'+(status==='Won'?' good':status==='Crashed'?' bad':'');
+}
+
+function render(){
+  const obsMap={};
+  obstacles.forEach(([r,c,t])=>obsMap[r+','+c]=t);
+  gridEl.style.gridTemplateColumns='repeat('+GRID+',1fr)';
+  let html='';
+  for(let r=0;r<GRID;r++){
+    for(let c=0;c<GRID;c++){
+      const k=r+','+c;
+      let cls='cell ',lbl='';
+      if(r===agentPos[0]&&c===agentPos[1]){cls+='cell-agent';lbl='C';}
+      else if(r===goalPos[0]&&c===goalPos[1]){cls+='cell-goal';lbl='G';}
+      else if(obsMap[k]===VEHICLE){cls+='cell-vehicle';lbl='V';}
+      else if(obsMap[k]===POTHOLE){cls+='cell-pothole';lbl='O';}
+      else if(obsMap[k]===PEDESTRIAN){cls+='cell-pedestrian';lbl='P';}
+      else{cls+='cell-empty';}
+      html+='<div class="'+cls+'">'+lbl+'</div>';
+    }
+  }
+  gridEl.innerHTML=html;
+}
+
+function runAuto(){
+  if(autoTimer)return;
+  el('btn-run').disabled=true;el('btn-stop').disabled=false;el('btn-step').disabled=true;
+  const go=()=>{if(!done&&!truncated){stepEnv();autoTimer=setTimeout(go,parseInt(el('speed').value));}else clearAuto();};
+  autoTimer=setTimeout(go,parseInt(el('speed').value));
+}
+function clearAuto(){if(autoTimer){clearTimeout(autoTimer);autoTimer=null;}}
+
+function addLog(msg,cls=''){const d=el('log');const line=document.createElement('div');line.className='log-line'+(cls?' '+cls:'');line.textContent=msg;d.appendChild(line);d.scrollTop=d.scrollHeight;}
+function clearLog(){el('log').innerHTML='';}
+
+el('btn-reset').addEventListener('click',reset);
+el('btn-step').addEventListener('click',()=>{if(!done&&!truncated)stepEnv();});
+el('btn-run').addEventListener('click',runAuto);
+el('btn-stop').addEventListener('click',()=>{clearAuto();el('btn-run').disabled=false;el('btn-stop').disabled=true;el('btn-step').disabled=false;});
+el('speed').addEventListener('input',function(){el('speed-val').textContent=this.value+'ms';});
+
+reset();
+</script>
